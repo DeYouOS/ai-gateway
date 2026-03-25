@@ -1,3 +1,122 @@
+# 当前方案说明
+
+在用的 **WireGuard + Squid + 本机 8118 代理入口** 方案信息。
+
+## 当前链路
+
+```text
+OpenCode / curl / 浏览器
+  -> 127.0.0.1:8118
+  -> 本机 socat
+  -> WireGuard
+  -> 美国服务器 10.66.66.1:3128 (Squid)
+  -> 官方 API / 外网目标
+```
+
+## 本机组件
+
+- `wg-quick@wg0`：WireGuard 客户端
+- `ai-proxy.service`：本机用户态代理服务，负责把 `127.0.0.1:8118` 转发到 `10.66.66.1:3128`
+- `us-browser`：专用浏览器启动脚本，默认走 `127.0.0.1:8118`
+
+## 服务器组件
+
+- `wg-quick@wg0`：WireGuard 服务端
+- `squid`：HTTP 代理
+- `sshd`：远程管理
+
+## 当前开放端口
+
+服务器仅保留：
+
+- `29622/tcp`：SSH
+- `51820/udp`：WireGuard
+
+`squid` 仅监听：
+
+- `127.0.0.1:3128`
+- `10.66.66.1:3128`
+
+不对公网暴露 `3128`。
+
+## 本机常用验证命令
+
+```bash
+sudo systemctl is-active wg-quick@wg0
+systemctl --user is-active ai-proxy.service
+curl -x http://127.0.0.1:8118 https://api.ipify.org?format=json
+```
+
+预期出口 IP：
+
+```json
+{"ip":"74.211.105.213"}
+```
+
+## 说明
+
+- 仓库中的旧 `ai-gateway` Go 源码、二进制和旧配置已清理。
+- 当前方案不再做统一 API 网关、OAuth 刷新、请求改写或 SSE 透传。
+- 当前方案核心目标是：**稳定代理出站**。
+
+## Sub2API 测试部署记录
+
+> 说明：以下为 **2026-03-25** 已实测通过的测试部署信息，仅记录可公开的运行信息；**不在仓库中记录真实密码、token、私钥**。
+
+### 部署位置
+
+- 服务器公网 IP：`74.211.105.213`
+- 服务器 SSH：`29622/tcp`
+- 部署目录：`/opt/sub2api-test`
+
+### 部署方式
+
+- 运行时：Docker Engine + Docker Compose Plugin
+- 编排文件：`docker-compose.local.yml`
+- 容器：
+  - `sub2api`
+  - `sub2api-postgres`
+  - `sub2api-redis`
+
+### 当前访问地址
+
+- Web：`http://74.211.105.213:8080/`
+- 安装状态接口：`http://74.211.105.213:8080/setup/status`
+
+实测返回：
+
+```json
+{"code":0,"data":{"needs_setup":false,"step":"completed"}}
+```
+
+### 当前监听与放行
+
+- Sub2API 已监听：`0.0.0.0:8080`
+- 服务器防火墙已放行：`8080/tcp`
+- 现有 `squid` / WireGuard 方案未移除，仍保持原状态
+
+### 当前用途
+
+- 该实例用于验证 `sub2api` 是否可作为缺失的应用层网关补位
+- 当前为 **测试实例**，不是生产定稿配置
+
+### 当前已知注意事项
+
+- 当前实例可公网访问，但尚未挂域名和 HTTPS
+- 当前日志已提示：`security.url_allowlist.enabled=false`
+- 当前更适合用于功能验证，不适合直接按现状长期对外提供生产服务
+
+### 常用检查命令
+
+```bash
+ssh -p 29622 root@74.211.105.213
+cd /opt/sub2api-test
+docker compose -f docker-compose.local.yml ps
+docker compose -f docker-compose.local.yml logs -f sub2api
+curl -I http://74.211.105.213:8080/
+curl http://74.211.105.213:8080/setup/status
+```
+
 # Sub2API
 
 <div align="center">
